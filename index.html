@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Persistent Shared Pixel Canvas</title>
+<title>Shared Pixel Canvas</title>
 <style>
-  body { display: flex; flex-direction: column; align-items: center; font-family: sans-serif; margin: 0; padding: 20px; background: #eee; }
-  canvas { border: 1px solid #000; image-rendering: pixelated; cursor: crosshair; }
+  body { display: flex; flex-direction: column; align-items: center; font-family: sans-serif; background: #f0f0f0; margin: 0; padding: 20px; }
+  h1 { margin-bottom: 10px; }
   #controls { margin-bottom: 10px; }
-  #info { font-weight: bold; margin-top: 10px; }
+  canvas { border: 2px solid #333; image-rendering: pixelated; cursor: crosshair; background: #fff; }
+  #info { margin-top: 10px; font-weight: bold; }
 </style>
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -20,8 +21,8 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // === Grid config ===
-const gridWidth = 100;
-const gridHeight = 60;
+const gridWidth = 60;  // smaller grid looks cleaner
+const gridHeight = 40;
 const pixelSize = 10;
 
 // === Canvas setup ===
@@ -35,7 +36,7 @@ const colorInput = document.getElementById("color");
 const info = document.getElementById("info");
 
 // === Pixel state ===
-const pixels = new Map(); // key = x_y, value = color
+const pixels = new Map();
 let remaining = 10;
 
 // --- Helpers ---
@@ -48,7 +49,7 @@ async function loadPixels(){
   const { data } = await supabase.from("pixels").select("*");
   if(data) data.forEach(p => {
     pixels.set(key(p.x,p.y), p.color);
-    drawPixel(p.x,p.y,p.color);
+    drawPixel(p.x,p.y,pixelSize,pixelSize,p.color); // draw nicely
   });
 }
 
@@ -93,7 +94,7 @@ updateInfo();
 </script>
 </head>
 <body>
-<h1>Persistent Shared Pixel Canvas</h1>
+<h1>Shared Pixel Canvas</h1>
 <div id="controls">
   <input type="color" id="color" value="#ff0000">
 </div>
