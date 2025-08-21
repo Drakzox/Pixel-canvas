@@ -3,155 +3,123 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Persistent Shared Pixel Canvas</title>
+<title>Shared Pixel Canvas</title>
 <style>
-  body { 
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    font-family: sans-serif; 
-    margin: 0; 
-    padding: 20px; 
-    background: #eee; 
-  }
-  canvas { 
-    border: 1px solid #000; 
-    image-rendering: pixelated; 
-    cursor: crosshair; 
-  }
-  #controls { margin-bottom: 10px; }
-  #info, #countdown { font-weight: bold; margin-top: 10px; }
+  body { display: flex; flex-direction: column; align-items: center; font-family: sans-serif; margin:0; padding:20px; background:#f0f0f0; }
+  canvas { border:1px solid #000; image-rendering: pixelated; cursor: crosshair; }
+  #controls { margin-bottom: 10px; display: flex; gap: 10px; align-items: center; }
+  #info { font-weight: bold; margin-top: 10px; }
 </style>
+</head>
+<body>
+<h1>Shared Pixel Canvas</h1>
+<div id="controls">
+  <label>Color <input type="color" id="color" value="#ff0000"></label>
+  <label>Pixel size
+    <select id="pxSize">
+      <option value="1">1</option>
+      <option value="2">2</option>
+      <option value="3">3</option>
+      <option value="4">4</option>
+    </select>
+  </label>
+</div>
+<canvas id="canvas"></canvas>
+<div id="info">Pixels left: 10 | Next reset: —</div>
+
 <script type="module">
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-// --- Supabase config ---
 const SUPABASE_URL = "https://pemfxpowmsajsxsveoli.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlbGZ4cG93bXNhanN4c3Zlb2xpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3NjYyNzMsImV4cCI6MjA3MTM0MjI3M30.SJBgs4kQTqyn6S6A3usxTHaWK-nb2R51DMznT6geA_M";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// --- Grid config ---
-const gridWidth = 100;
-const gridHeight = 60;
-const pixelSize = 10;
+// Canvas setup
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const colorInput = document.getElementById('color');
+const sizeSelect = document.getElementById('pxSize');
+const info = document.getElementById('info');
+canvas.width = 1000; // adjust as needed
+canvas.height = 600;
 
-// --- Canvas setup ---
-const canvas = document.getElementById("canvas");
-canvas.width = gridWidth * pixelSize;
-canvas.height = gridHeight * pixelSize;
-const ctx = canvas.getContext("2d");
+// Token bucket
+let tokens = 10;
+const CAPACITY = 10;
+const REFILL_MS = 60000; // 1 token per min
+function updateInfo(){ info.textContent = `Pixels left: ${tokens} | Next reset: ${countdownText}`; }
+setInterval(()=>{ if(tokens<CAPACITY) tokens++; updateInfo(); }, REFILL_MS);
 
-// --- UI elements ---
-const colorInput = document.getElementById("color");
-const info = document.getElementById("info");
-const countdownEl = document.createElement("div");
-countdownEl.id = "countdown";
-document.body.insertBefore(countdownEl, canvas);
-
-// --- Pixel state ---
-const pixels = new Map(); // key = x_y, value = color
-let remaining = 10;
-
-// --- Helpers ---
+// Pixel state
+const pixels = new Map();
+function drawPixel(x,y,color){ const size=parseInt(sizeSelect.value)||1; ctx.fillStyle=color; ctx.fillRect(x,y,size,size); }
 function key(x,y){ return `${x}_${y}`; }
-function drawPixel(x,y,color){ ctx.fillStyle = color; ctx.fillRect(x*pixelSize,y*pixelSize,pixelSize,pixelSize); }
-function updateInfo(){ info.innerText = `Pixels left: ${remaining}`; }
-function clearCanvas(){ ctx.clearRect(0,0,canvas.width,canvas.height); pixels.clear(); }
 
-// --- Load existing pixels ---
+// Load existing pixels
 async function loadPixels(){
-  clearCanvas();
-  const { data } = await supabase.from("pixels").select("*");
-  if(data) data.forEach(p => {
-    pixels.set(key(p.x,p.y), p.color);
-    drawPixel(p.x,p.y,p.color);
-  });
+  const { data } = await supabase.from('pixels').select('*');
+  if(data) data.forEach(p=>{ const k=key(p.x,p.y); pixels.set(k,p.color); drawPixel(p.x,p.y,p.color); });
 }
 
-// --- Real-time updates ---
-supabase.channel("public:pixels")
-  .on("postgres_changes",{ event:"INSERT", schema:"public", table:"pixels" }, payload=>{
-    const p = payload.new;
-    const k = key(p.x,p.y);
-    if(!pixels.has(k)){
-      pixels.set(k,p.color);
-      drawPixel(p.x,p.y,p.color);
-    }
-  })
-  .subscribe();
+// Real-time updates
+supabase.channel('public:pixels')
+  .on('postgres_changes',{event:'INSERT',schema:'public',table:'pixels'},payload=>{
+    const p=payload.new; const k=key(p.x,p.y);
+    if(!pixels.has(k)){ pixels.set(k,p.color); drawPixel(p.x,p.y,p.color); }
+  }).subscribe();
 
-// --- Place a pixel ---
+// Place pixel
 async function placePixel(x,y,color){
-  const k = key(x,y);
-  if(pixels.has(k)) return; // cannot overwrite
-  if(remaining<=0){ alert("No pixels left! Wait for refill."); return; }
-  remaining--;
+  const k=key(x,y);
+  if(pixels.has(k)) return;
+  if(tokens<=0){ alert("No pixels left!"); return; }
+  tokens--;
   pixels.set(k,color);
   drawPixel(x,y,color);
   updateInfo();
-  await supabase.from("pixels").insert({x,y,color});
+  await supabase.from('pixels').insert({x,y,color});
 }
 
-// --- Handle clicks ---
-canvas.addEventListener("click", e=>{
-  const rect = canvas.getBoundingClientRect();
-  const x = Math.floor((e.clientX - rect.left)/pixelSize);
-  const y = Math.floor((e.clientY - rect.top)/pixelSize);
+// Mouse events
+canvas.addEventListener('pointerdown',e=>{ paint(e); });
+canvas.addEventListener('pointermove',e=>{ if(e.buttons) paint(e); });
+function paint(e){
+  const rect=canvas.getBoundingClientRect();
+  const x=Math.floor(e.clientX-rect.left);
+  const y=Math.floor(e.clientY-rect.top);
   placePixel(x,y,colorInput.value);
-});
-
-// --- Refill tokens every 1 min ---
-setInterval(()=>{ if(remaining<10){ remaining++; updateInfo(); } }, 60000);
-
-// --- Midnight Israel reset + countdown ---
-function getNextIsraelMidnight() {
-  const now = new Date();
-  const israelOffset = 3 * 60; // UTC+3
-  const utcNow = now.getTime() + now.getTimezoneOffset()*60000;
-  const israelNow = new Date(utcNow + israelOffset*60000);
-  const nextMidnight = new Date(israelNow);
-  nextMidnight.setHours(24,0,0,0);
-  return new Date(nextMidnight.getTime() - israelOffset*60000); // convert back to UTC for timer
 }
 
-async function resetCanvas() {
-  await supabase.from("pixels").delete().neq("id",0);
-  clearCanvas();
+// Daily reset
+function getNextReset(){
+  const now=new Date();
+  const utc=now.getTime() + now.getTimezoneOffset()*60000;
+  const israelOffset=3*60*60000;
+  const israelNow=new Date(utc+israelOffset);
+  const next=new Date(israelNow);
+  next.setHours(24,0,0,0);
+  return new Date(next.getTime()-israelOffset);
+}
+let nextReset = getNextReset();
+let countdownText = '';
+async function resetCanvas(){
+  await supabase.from('pixels').delete().neq('id',0);
+  pixels.clear();
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height);
+}
+function updateCountdown(){
+  const now=new Date();
+  const diff = nextReset-now;
+  if(diff<=0){ resetCanvas(); nextReset=getNextReset(); }
+  const s=Math.floor(diff/1000); const h=String(Math.floor(s/3600)).padStart(2,'0'); const m=String(Math.floor((s%3600)/60)).padStart(2,'0'); const sec=String(s%60).padStart(2,'0');
+  countdownText = `${h}:${m}:${sec}`;
   updateInfo();
-  loadPixels();
 }
+setInterval(updateCountdown,1000);
 
-function updateCountdown() {
-  const now = new Date();
-  const diff = nextResetTime - now;
-  if(diff <= 0){
-    resetCanvas();
-    nextResetTime = getNextIsraelMidnight();
-  }
-  const totalSec = Math.floor(diff/1000);
-  const h = String(Math.floor(totalSec/3600)).padStart(2,'0');
-  const m = String(Math.floor((totalSec%3600)/60)).padStart(2,'0');
-  const s = String(totalSec%60).padStart(2,'0');
-  countdownEl.innerText = `Next reset in: ${h}:${m}:${s}`;
-}
-
-let nextResetTime = getNextIsraelMidnight();
-setInterval(updateCountdown, 1000);
-
-// --- Init ---
-loadPixels();
-updateInfo();
-updateCountdown();
-
+// Init
+window.addEventListener('load',()=>{ ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,canvas.width,canvas.height); loadPixels(); updateCountdown(); updateInfo(); });
 </script>
-</head>
-<body>
-<h1>Persistent Shared Pixel Canvas</h1>
-<div id="controls">
-  <input type="color" id="color" value="#ff0000">
-</div>
-<canvas id="canvas"></canvas>
-<div id="info"></div>
 </body>
 </html>
