@@ -1,249 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Pixel Canvas — 10 pixels / 10 minutes</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shared Pixel Canvas</title>
   <style>
-    :root {
-      --bg: #0f1115;
-      --card: #ffffff;
-      --text: #0f1115;
-      --muted: #6b7280;
-      --accent: #3b82f6;
-      --danger: #ef4444;
-      --ok: #10b981;
-    }
-    html, body { height: 100%; margin: 0; background: var(--bg); font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
-    .wrap { display: grid; place-items: center; min-height: 100%; padding: 20px; }
-    .card { background: var(--card); color: var(--text); width: min(100%, 980px); border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.15); overflow: hidden; }
-    header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; gap: 12px; flex-wrap: wrap; }
-    header h1 { font-size: 18px; margin: 0; }
-    .stats { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-    .pill { padding: 6px 10px; border-radius: 999px; background: #f3f4f6; font-size: 13px; }
-    .pill.ok { background: #ecfdf5; color: var(--ok); border: 1px solid #d1fae5; }
-    .pill.warn { background: #fff7ed; color: #f59e0b; border: 1px solid #ffedd5; }
-    .pill.err { background: #fef2f2; color: var(--danger); border: 1px solid #fee2e2; }
-    .controls { display: flex; gap: 10px; align-items: center; }
-    .controls button, .controls select { font: inherit; border: 1px solid #e5e7eb; padding: 8px 10px; border-radius: 10px; background: white; cursor: pointer; }
-    .controls button:hover { background: #f9fafb; }
-    .controls .danger { color: var(--danger); border-color: #fecaca; }
-    .canvas-wrap { background: white; border-top: 1px solid #e5e7eb; }
-    canvas { display: block; width: 100%; height: 70vh; max-height: 720px; touch-action: none; cursor: crosshair; }
-    footer { padding: 10px 16px; font-size: 12px; color: var(--muted); border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-    a { color: var(--accent); text-decoration: none; }
-    a:hover { text-decoration: underline; }
+    body { display: flex; flex-direction: column; align-items: center; font-family: sans-serif; }
+    canvas { border: 1px solid #000; cursor: crosshair; }
+    #info { margin-top: 10px; font-weight: bold; }
+    input[type="color"] { margin-bottom: 10px; }
   </style>
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    // ✅ Use your Supabase credentials
+    const SUPABASE_URL = "https://pemfxpowmsajsxsveoli.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlbWZ4cG93bXNhanN4c3Zlb2xpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3NjYyNzMsImV4cCI6MjA3MTM0MjI3M30.SJBgs4kQTqyn6S6A3usxTHaWK-nb2R51DMznT6geA_M";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const pixelSize = 10; // each logical pixel is 10x10 on canvas
+    const gridWidth = canvas.width / pixelSize;
+    const gridHeight = canvas.height / pixelSize;
+    let remaining = 10; // 10 pixels per 10 minutes
+    const refillIntervalMs = 60000; // 1 token per minute
+
+    const colorInput = document.getElementById("color");
+    const info = document.getElementById("info");
+
+    function updateInfo() {
+      info.innerText = `Pixels remaining: ${remaining}`;
+    }
+
+    async function placePixel(x, y, color) {
+      if (remaining <= 0) {
+        alert("No pixels left! Wait for refill.");
+        return;
+      }
+      remaining--;
+      updateInfo();
+      ctx.fillStyle = color;
+      ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+      await supabase.from("pixels").insert({ x, y, color });
+    }
+
+    async function loadPixels() {
+      const { data } = await supabase.from("pixels").select("x,y,color");
+      if (data) {
+        data.forEach(p => {
+          ctx.fillStyle = p.color;
+          ctx.fillRect(p.x * pixelSize, p.y * pixelSize, pixelSize, pixelSize);
+        });
+      }
+    }
+
+    // Real-time updates
+    supabase.channel("public:pixels")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "pixels" }, payload => {
+        const p = payload.new;
+        ctx.fillStyle = p.color;
+        ctx.fillRect(p.x * pixelSize, p.y * pixelSize, pixelSize, pixelSize);
+      })
+      .subscribe();
+
+    // Token refill timer
+    setInterval(() => {
+      if (remaining < 10) {
+        remaining++;
+        updateInfo();
+      }
+    }, refillIntervalMs);
+
+    // Canvas click
+    canvas.addEventListener("click", e => {
+      const rect = canvas.getBoundingClientRect();
+      const x = Math.floor((e.clientX - rect.left) / pixelSize);
+      const y = Math.floor((e.clientY - rect.top) / pixelSize);
+      const color = colorInput.value;
+      placePixel(x, y, color);
+    });
+
+    // Initial load
+    loadPixels();
+    updateInfo();
+  </script>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <header>
-        <h1>Pixel Canvas — 10 pixels every 10 minutes</h1>
-        <div class="stats">
-          <span class="pill" id="remaining-pill">Remaining: 0</span>
-          <span class="pill warn" id="next-pill">Next in: —</span>
-        </div>
-        <div class="controls">
-          <label>
-            Color
-            <input type="color" id="color" value="#000000"/>
-          </label>
-          <label>
-            Pixel size
-            <select id="pxSize">
-              <option value="1" selected>1</option>
-              <option value="2">2</option>
-              <option value="3">3</option>
-              <option value="4">4</option>
-            </select>
-          </label>
-          <button id="reset" class="danger" title="Clear the canvas">Reset</button>
-        </div>
-      </header>
-      <div class="canvas-wrap">
-        <canvas id="board"></canvas>
-      </div>
-      <footer>
-        <div>
-          This page enforces a <strong>token bucket</strong>: capacity 10, refilling 1 token per minute (10 per 10 minutes). Tokens persist in your browser.
-        </div>
-        <div>
-          Tip: tap/click to place pixels. Hold and drag paints multiple pixels (consumes one token per pixel).
-        </div>
-      </footer>
-    </div>
-  </div>
-
-  <script>
-    // ===== Rate limiter config =====
-    const CAPACITY = 10;                 // maximum tokens
-    const REFILL_MS = 60 * 1000;         // 1 token per minute -> 10 tokens / 10 minutes
-    const STORAGE_KEY = 'pixel-canvas-rate-v1';
-
-    // ===== State =====
-    let state = {
-      tokens: CAPACITY,
-      lastRefill: Date.now(), // timestamp of last refill tick
-    };
-
-    // Load persisted state
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Number.isFinite(parsed.tokens) && Number.isFinite(parsed.lastRefill)) {
-          state.tokens = Math.min(CAPACITY, Math.max(0, parsed.tokens));
-          state.lastRefill = parsed.lastRefill;
-        }
-      }
-    } catch {}
-
-    function persist() {
-      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch {}
-    }
-
-    function refillTokens(now = Date.now()) {
-      if (state.tokens >= CAPACITY) {
-        state.lastRefill = now; // keep it fresh so countdown shows "Full"
-        return;
-      }
-      const elapsed = now - state.lastRefill;
-      const toAdd = Math.floor(elapsed / REFILL_MS);
-      if (toAdd > 0) {
-        state.tokens = Math.min(CAPACITY, state.tokens + toAdd);
-        state.lastRefill += toAdd * REFILL_MS;
-        persist();
-      }
-    }
-
-    function msUntilNext(now = Date.now()) {
-      if (state.tokens >= CAPACITY) return 0;
-      const elapsed = now - state.lastRefill;
-      const remain = REFILL_MS - (elapsed % REFILL_MS);
-      return Math.max(0, remain);
-    }
-
-    // ===== Canvas setup (HiDPI aware) =====
-    const canvas = document.getElementById('board');
-    const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
-
-    function resizeCanvas() {
-      const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const { clientWidth, clientHeight } = canvas;
-      canvas.width = Math.floor(clientWidth * dpr);
-      canvas.height = Math.floor(clientHeight * dpr);
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS pixels
-      // fill white background
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-
-    // On first layout, ensure canvas gets a height via CSS then size backing store
-    const ro = new ResizeObserver(() => resizeCanvas());
-    ro.observe(canvas);
-
-    // ===== UI updates =====
-    const remainingPill = document.getElementById('remaining-pill');
-    const nextPill = document.getElementById('next-pill');
-    const colorInput = document.getElementById('color');
-    const sizeSelect = document.getElementById('pxSize');
-    const resetBtn = document.getElementById('reset');
-
-    function fmt(ms) {
-      const s = Math.ceil(ms / 1000);
-      const m = Math.floor(s / 60);
-      const r = s % 60;
-      return m > 0 ? `${m}m ${r}s` : `${r}s`;
-    }
-
-    function updateUI() {
-      const now = Date.now();
-      refillTokens(now);
-      remainingPill.textContent = `Remaining: ${state.tokens}`;
-      if (state.tokens >= CAPACITY) {
-        nextPill.textContent = 'Next in: Full';
-        nextPill.className = 'pill ok';
-      } else {
-        const ms = msUntilNext(now);
-        nextPill.textContent = `Next in: ${fmt(ms)}`;
-        nextPill.className = 'pill warn';
-      }
-    }
-
-    setInterval(updateUI, 500); // smooth countdown
-    updateUI();
-
-    // ===== Drawing logic =====
-    let painting = false;
-
-    function trySpendToken() {
-      refillTokens();
-      if (state.tokens <= 0) return false;
-      state.tokens -= 1;
-      persist();
-      updateUI();
-      return true;
-    }
-
-    function drawPixelAt(clientX, clientY) {
-      // Translate client coords to canvas CSS pixel space
-      const rect = canvas.getBoundingClientRect();
-      const x = Math.floor(clientX - rect.left);
-      const y = Math.floor(clientY - rect.top);
-
-      const size = parseInt(sizeSelect.value, 10) || 1;
-      ctx.fillStyle = colorInput.value || '#000000';
-      ctx.fillRect(x, y, size, size);
-    }
-
-    function handlePointerDown(e) {
-      e.preventDefault();
-      if (!trySpendToken()) {
-        blink(nextPill);
-        return;
-      }
-      painting = true;
-      drawPixelAt(e.clientX, e.clientY);
-    }
-
-    function handlePointerMove(e) {
-      if (!painting) return;
-      // Each move draws and consumes a token
-      if (!trySpendToken()) {
-        painting = false;
-        blink(nextPill);
-        return;
-      }
-      drawPixelAt(e.clientX, e.clientY);
-    }
-
-    function handlePointerUp() { painting = false; }
-
-    function blink(el) {
-      el.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.06)' }, { transform: 'scale(1)' }], { duration: 250 });
-    }
-
-    canvas.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    window.addEventListener('pointercancel', handlePointerUp);
-    window.addEventListener('blur', handlePointerUp);
-
-    // Prevent context menu on long-press
-    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
-
-    // Reset canvas
-    resetBtn.addEventListener('click', () => {
-      if (!confirm('Clear the canvas? This cannot be undone.')) return;
-      resizeCanvas();
-    });
-
-    // Initialize once DOM is painted so ResizeObserver runs
-    window.addEventListener('load', () => {
-      resizeCanvas();
-      updateUI();
-    });
-  </script>
+  <h1>Shared Pixel Canvas</h1>
+  <input type="color" id="color" value="#ff0000" />
+  <canvas id="canvas" width="600" height="400"></canvas>
+  <div id="info"></div>
 </body>
 </html>
