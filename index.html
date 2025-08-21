@@ -1,27 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Pixel Canvas — 10 pixels / 10 minutes</title>
 <style>
-:root { --bg:#0f1115; --card:#fff; --text:#0f1115; --muted:#6b7280; --accent:#3b82f6; --danger:#ef4444; --ok:#10b981; }
-html,body{margin:0;height:100%;background:var(--bg);font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Noto Sans,Arial;}
-.wrap{display:grid;place-items:center;min-height:100%;padding:20px;}
-.card{background:var(--card);color:var(--text);width:min(100%,980px);border-radius:18px;box-shadow:0 10px 30px rgba(0,0,0,.15);overflow:hidden;}
-header{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e5e7eb;gap:12px;flex-wrap:wrap;}
-header h1{font-size:18px;margin:0;}
-.stats{display:flex;gap:12px;align-items:center;flex-wrap:wrap;}
-.pill{padding:6px 10px;border-radius:999px;background:#f3f4f6;font-size:13px;}
-.pill.ok{background:#ecfdf5;color:var(--ok);border:1px solid #d1fae5;}
-.pill.warn{background:#fff7ed;color:#f59e0b;border:1px solid #ffedd5;}
-.controls{display:flex;gap:10px;align-items:center;}
-.controls label{display:flex;gap:5px;align-items:center;}
-.canvas-wrap{background:white;border-top:1px solid #e5e7eb;}
-canvas{display:block;width:100%;height:70vh;max-height:720px;touch-action:none;cursor:crosshair;}
-footer{padding:10px 16px;font-size:12px;color:var(--muted);border-top:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;}
-a{color:var(--accent);text-decoration:none;}
-a:hover{text-decoration:underline;}
+  :root {
+    --bg: #0f1115;
+    --card: #ffffff;
+    --text: #0f1115;
+    --muted: #6b7280;
+    --accent: #3b82f6;
+    --ok: #10b981;
+  }
+  html, body { height: 100%; margin: 0; background: var(--bg); font-family: system-ui, sans-serif; }
+  .wrap { display: grid; place-items: center; min-height: 100%; padding: 20px; }
+  .card { background: var(--card); color: var(--text); width: min(100%,980px); border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.15); overflow: hidden; }
+  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 16px; border-bottom: 1px solid #e5e7eb; gap: 12px; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  .stats { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .pill { padding: 6px 10px; border-radius: 999px; background: #f3f4f6; font-size: 13px; }
+  .pill.ok { background: #ecfdf5; color: var(--ok); border: 1px solid #d1fae5; }
+  .controls { display: flex; gap: 10px; align-items: center; }
+  .controls label { display: flex; align-items: center; gap: 5px; }
+  .canvas-wrap { background: white; border-top: 1px solid #e5e7eb; }
+  canvas { display: block; width: 100%; height: 70vh; max-height: 720px; touch-action: none; cursor: crosshair; image-rendering: pixelated; }
+  footer { padding: 10px 16px; font-size: 12px; color: var(--muted); border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
 </style>
 </head>
 <body>
@@ -30,25 +34,17 @@ a:hover{text-decoration:underline;}
     <header>
       <h1>Pixel Canvas — 10 pixels every 10 minutes</h1>
       <div class="stats">
-        <span class="pill" id="remaining-pill">Remaining: 0</span>
-        <span class="pill warn" id="next-pill">Next in: —</span>
+        <span class="pill" id="remaining-pill">Remaining: 10</span>
       </div>
       <div class="controls">
-        <label>Color <input type="color" id="color" value="#000000"/></label>
-        <label>Pixel size 
-          <select id="pxSize">
-            <option value="1" selected>1</option>
-            <option value="2">2</option>
-            <option value="3">3</option>
-            <option value="4">4</option>
-          </select>
-        </label>
+        <label>Color <input type="color" id="color" value="#ff0000"></label>
       </div>
     </header>
-    <div class="canvas-wrap"><canvas id="board"></canvas></div>
+    <div class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+    </div>
     <footer>
-      <div>This page enforces a <strong>token bucket</strong>: capacity 10, refilling 1 token per minute (10 per 10 minutes). Tokens persist in your browser.</div>
-      <div>Tip: tap/click to place pixels. Hold and drag paints multiple pixels (consumes one token per pixel).</div>
+      <div>Persistent shared canvas. Place up to 10 pixels every 10 minutes. Tokens persist in your browser.</div>
     </footer>
   </div>
 </div>
@@ -58,42 +54,85 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Supabase config
 const SUPABASE_URL = "https://pemfxpowmsajsxsveoli.supabase.co";
-const SUPABASE_ANON_KEY = "YOUR-ANON-KEY"; // <-- replace with your anon key
-const supabase = createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBlbGZ4cG93bXNhanN4c3Zlb2xpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTU3NjYyNzMsImV4cCI6MjA3MTM0MjI3M30.SJBgs4kQTqyn6S6A3usxTHaWK-nb2R51DMznT6geA_M";
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Token bucket
-const CAPACITY=10, REFILL_MS=60*1000, STORAGE_KEY='pixel-canvas-rate-v1';
-let state={tokens:CAPACITY,lastRefill:Date.now()};
-try{const raw=localStorage.getItem(STORAGE_KEY);if(raw){const p=JSON.parse(raw);state.tokens=Math.min(CAPACITY,Math.max(0,p.tokens));state.lastRefill=p.lastRefill;}}catch{}
-function persist(){localStorage.setItem(STORAGE_KEY,JSON.stringify(state));}
-function refillTokens(now=Date.now()){if(state.tokens>=CAPACITY){state.lastRefill=now;return;}const elapsed=now-state.lastRefill;const add=Math.floor(elapsed/REFILL_MS);if(add>0){state.tokens=Math.min(CAPACITY,state.tokens+add);state.lastRefill+=add*REFILL_MS;persist();}}
-function msUntilNext(now=Date.now()){if(state.tokens>=CAPACITY)return 0;return REFILL_MS-(now-state.lastRefill)%REFILL_MS;}
-function updateUI(){refillTokens();remainingPill.textContent=`Remaining: ${state.tokens}`;nextPill.textContent=state.tokens>=CAPACITY?'Next in: Full':`Next in: ${Math.ceil(msUntilNext()/1000)}s`;nextPill.className=state.tokens>=CAPACITY?'pill ok':'pill warn';}
-const remainingPill=document.getElementById('remaining-pill');
-const nextPill=document.getElementById('next-pill');
-const colorInput=document.getElementById('color');
-const sizeSelect=document.getElementById('pxSize');
-setInterval(updateUI,500);updateUI();
+// Grid config
+const gridWidth = 100;
+const gridHeight = 60;
+const pixelSize = 10;
 
 // Canvas
-const canvas=document.getElementById('board');
-const ctx=canvas.getContext('2d',{alpha:false});
-function resizeCanvas(){const dpr=window.devicePixelRatio||1;canvas.width=canvas.clientWidth*dpr;canvas.height=canvas.clientHeight*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);loadPixels();}
-new ResizeObserver(resizeCanvas).observe(canvas);
+const canvas = document.getElementById("canvas");
+canvas.width = gridWidth * pixelSize;
+canvas.height = gridHeight * pixelSize;
+const ctx = canvas.getContext("2d");
 
-// Pixel storage & realtime
-async function loadPixels(){const {data}=await supabase.from("pixels").select("*");if(data)for(const p of data)drawPixel(p.x,p.y,p.color,p.size);}
-function drawPixel(x,y,color,size=1){ctx.fillStyle=color;ctx.fillRect(x,y,size,size);}
-async function savePixel(x,y,color,size){await supabase.from("pixels").insert({x,y,color,size});}
-supabase.channel("pixels").on("postgres_changes",{event:"INSERT",schema:"public",table:"pixels"},payload=>drawPixel(payload.new.x,payload.new.y,payload.new.color,payload.new.size||1)).subscribe();
+// UI
+const colorInput = document.getElementById("color");
+const remainingPill = document.getElementById("remaining-pill");
 
-// Drawing logic
-let painting=false;
-function trySpend(){refillTokens();if(state.tokens<=0)return false;state.tokens--;persist();updateUI();return true;}
-function drawAndSave(e){const rect=canvas.getBoundingClientRect();const x=Math.floor(e.clientX-rect.left);const y=Math.floor(e.clientY-rect.top);const size=parseInt(sizeSelect.value,10)||1;drawPixel(x,y,colorInput.value,size);savePixel(x,y,colorInput.value,size);}
-canvas.addEventListener("pointerdown",e=>{if(!trySpend())return;painting=true;drawAndSave(e);});
-window.addEventListener("pointermove",e=>{if(!painting)return;if(!trySpend()){painting=false;return;}drawAndSave(e);});
-["pointerup","pointercancel","blur"].forEach(ev=>window.addEventListener(ev,()=>painting=false));
+// Pixel state
+const pixels = new Map(); // key = x_y, value = color
+let remaining = 10;
+
+// Helpers
+function key(x,y){ return `${x}_${y}`; }
+function drawPixel(x,y,color){ ctx.fillStyle=color; ctx.fillRect(x*pixelSize,y*pixelSize,pixelSize,pixelSize); }
+function updateInfo(){ remainingPill.innerText = `Remaining: ${remaining}`; }
+
+// Load existing pixels
+async function loadPixels(){
+  const { data } = await supabase.from("pixels").select("*");
+  if(data) data.forEach(p => {
+    pixels.set(key(p.x,p.y), p.color);
+    drawPixel(p.x,p.y,p.color);
+  });
+}
+
+// Real-time updates
+supabase.channel("public:pixels")
+  .on("postgres_changes",{ event:"INSERT", schema:"public", table:"pixels" }, payload=>{
+    const p = payload.new;
+    const k = key(p.x,p.y);
+    if(!pixels.has(k)){
+      pixels.set(k,p.color);
+      drawPixel(p.x,p.y,p.color);
+    }
+  })
+  .subscribe();
+
+// Place pixel
+async function placePixel(x,y,color){
+  const k = key(x,y);
+  if(pixels.has(k)) return;
+  if(remaining<=0){ alert("No pixels left! Wait for refill."); return; }
+  remaining--;
+  pixels.set(k,color);
+  drawPixel(x,y,color);
+  updateInfo();
+  await supabase.from("pixels").insert({x,y,color});
+}
+
+// Handle clicks
+canvas.addEventListener("click", e=>{
+  const rect = canvas.getBoundingClientRect();
+  const x = Math.floor((e.clientX - rect.left)/pixelSize);
+  const y = Math.floor((e.clientY - rect.top)/pixelSize);
+  placePixel(x,y,colorInput.value);
+});
+
+// Refill tokens every 1 min
+setInterval(()=>{
+  if(remaining<10){
+    remaining++;
+    updateInfo();
+  }
+}, 60000);
+
+// Init
+loadPixels();
+updateInfo();
 </script>
 </body>
 </html>
